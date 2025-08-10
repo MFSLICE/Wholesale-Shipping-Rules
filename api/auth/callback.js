@@ -65,6 +65,32 @@ async function registerCarrierService(shop, accessToken, callbackUrl) {
   if (!resp.ok) {
     const text = await resp.text();
     console.warn('Carrier service register response', resp.status, text);
+    // If already exists, attempt an update of the existing service with same name
+    if (resp.status === 422) {
+      try {
+        const listUrl = `https://${shop}/admin/api/2023-10/carrier_services.json`;
+        const listResp = await fetch(listUrl, {
+          headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': accessToken },
+        });
+        if (listResp.ok) {
+          const list = await listResp.json();
+          const existing = (list.carrier_services || []).find(cs => cs.name === 'Wholesale Shipping Rules');
+          if (existing && existing.id) {
+            const updateUrl = `https://${shop}/admin/api/2023-10/carrier_services/${existing.id}.json`;
+            const updateBody = { carrier_service: { id: existing.id, name: 'Wholesale Shipping Rules', callback_url: callbackUrl, service_discovery: false } };
+            const updateResp = await fetch(updateUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': accessToken },
+              body: JSON.stringify(updateBody),
+            });
+            const updateText = await updateResp.text();
+            console.log('Carrier service update status', updateResp.status, updateText);
+          }
+        }
+      } catch (e) {
+        console.warn('Carrier service update attempt failed', e && e.message ? e.message : e);
+      }
+    }
   }
 }
 
