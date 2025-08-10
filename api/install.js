@@ -1,6 +1,10 @@
 const crypto = require('crypto');
 
 module.exports = async (req, res) => {
+  console.log('INSTALL FUNCTION CALLED');
+  console.log('ENV CHECK:', JSON.stringify({
+    SHOPIFY_API_KEY: process.env.SHOPIFY_API_KEY ? 'loaded' : 'missing'
+  }));
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -48,14 +52,14 @@ module.exports = async (req, res) => {
     `&redirect_uri=${redirectUri}`;
 
   // Debug logging
-  console.log('[install] params', { shop, configuredBaseUrl, redirectUriRaw, scopes, state });
-  console.log('[install] client_id', clientId);
-  console.log('[install] full_oauth_url', installUrl);
+  console.log('[install] params', JSON.stringify({ shop, configuredBaseUrl, redirectUriRaw, scopes, state }));
+  console.log('[install] client_id', JSON.stringify(clientId));
+  console.log('REDIRECTING TO:', JSON.stringify(installUrl));
   if (redirectUriRaw !== expectedProdCallback) {
-    console.warn('[install] redirect_uri does not match expected production callback', {
+    console.warn('[install] redirect_uri does not match expected production callback', JSON.stringify({
       redirectUriRaw,
-      expectedProdCallback,
-    });
+      expectedProdCallback
+    }));
   }
 
   res.statusCode = 302;
