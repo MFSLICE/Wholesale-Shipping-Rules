@@ -39,17 +39,17 @@ module.exports = async (req, res) => {
 
   const scopes = 'read_customers,read_orders,read_shipping,write_shipping,read_products';
   const redirectUriRaw = `${configuredBaseUrl}/api/auth/callback`;
-  const redirectUri = encodeURIComponent(redirectUriRaw);
   const clientId = process.env.SHOPIFY_API_KEY;
   if (!clientId) {
     console.error('[install] Missing SHOPIFY_API_KEY environment variable');
     res.statusCode = 500;
     return res.end('Server not configured: missing client_id');
   }
+  // Build OAuth URL without double-encoding redirect_uri or scopes
   const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}` +
-    `&scope=${encodeURIComponent(scopes)}` +
+    `&scope=${scopes}` +
     `&state=${state}` +
-    `&redirect_uri=${redirectUri}`;
+    `&redirect_uri=${redirectUriRaw}`;
 
   // Debug logging
   console.log('[install] params', JSON.stringify({ shop, configuredBaseUrl, redirectUriRaw, scopes, state }));
