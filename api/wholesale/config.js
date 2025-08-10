@@ -1,4 +1,4 @@
-// Stores wholesale rules (tag + threshold) in a shop metafield for use by Functions
+// Stores wholesale rules (tag + threshold) using Metaobjects for use by Functions
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -48,23 +48,67 @@ module.exports = async (req, res) => {
   const thresholdCents = Number(body.thresholdCents || req.query.thresholdCents || 100000);
   if (!Number.isFinite(thresholdCents) || thresholdCents < 0) return sendJson(res, 400, { error: 'Invalid thresholdCents' });
 
-  const namespace = 'wholesale';
-  const key = 'shipping_rules';
-  const value = JSON.stringify({ wholesaleTag, thresholdCents });
+  // Use Metaobjects (you have write_metaobjects/read_metaobjects scopes)
+  // 1) Ensure definition exists
+  const defHandle = 'wholesale_rules';
+  const ensureDefQuery = `#graphql
+    query GetDefinition($handle: String!) {
+      metaobjectDefinitionByHandle(handle: $handle) { id handle name }
+    }
+  `;
+  const createDefMutation = `#graphql
+    mutation CreateDefinition($handle: String!) {
+      metaobjectDefinitionCreate(
+        handle: $handle,
+        name: "Wholesale Rules",
+        fieldDefinitions: [
+          { name: "Wholesale Tag", key: "wholesale_tag", type: single_line_text_field, required: true },
+          { name: "Threshold Cents", key: "threshold_cents", type: number_integer, required: true }
+        ]
+      ) { metaobjectDefinition { id handle } userErrors { field message } }
+    }
+  `;
 
-  const mutation = `#graphql
-    mutation SetMeta($ns: String!, $key: String!, $value: String!) {
-      metafieldsSet(metafields: [
-        { ownerId: "gid://shopify/Shop/1", namespace: $ns, key: $key, type: "json", value: $value }
-      ]) {
+  // 2) Upsert a single entry (use fixed handle 'default')
+  const upsertEntryMutation = `#graphql
+    mutation UpsertEntry($type: String!, $handle: String!, $wholesaleTag: String!, $threshold: String!) {
+      metaobjectUpsert(
+        metaobject: {
+          type: $type,
+          handle: $handle,
+          fields: [
+            { key: "wholesale_tag", value: $wholesaleTag },
+            { key: "threshold_cents", value: $threshold }
+          ]
+        }
+      ) {
+        metaobject { id handle type }
         userErrors { field message }
       }
     }
   `;
 
   try {
-    const result = await graphql(shop, token, mutation, { ns: namespace, key, value });
-    return sendJson(res, 200, { status: 'saved', shop, wholesaleTag, thresholdCents, result });
+    // Ensure definition
+    const existing = await graphql(shop, token, ensureDefQuery, { handle: defHandle });
+    if (!existing?.data?.metaobjectDefinitionByHandle) {
+      const created = await graphql(shop, token, createDefMutation, { handle: defHandle });
+      if (created?.data?.metaobjectDefinitionCreate?.userErrors?.length) {
+        return sendJson(res, 422, { error: 'Failed to create metaobject definition', errors: created.data.metaobjectDefinitionCreate.userErrors });
+      }
+    }
+
+    // Upsert entry
+    const upsert = await graphql(shop, token, upsertEntryMutation, {
+      type: defHandle,
+      handle: 'default',
+      wholesaleTag,
+      threshold: String(thresholdCents)
+    });
+    const errs = upsert?.data?.metaobjectUpsert?.userErrors || [];
+    if (errs.length) return sendJson(res, 422, { error: 'Failed to save rules', errors: errs });
+
+    return sendJson(res, 200, { status: 'saved', shop, wholesaleTag, thresholdCents, metaobject: upsert?.data?.metaobjectUpsert?.metaobject });
   } catch (err) {
     console.error('[wholesale/config] error', err && err.stack ? err.stack : err);
     return sendJson(res, 500, { error: 'Failed to save config', message: String(err && err.message ? err.message : err) });
