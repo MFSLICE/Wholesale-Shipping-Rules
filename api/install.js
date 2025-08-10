@@ -25,18 +25,38 @@ module.exports = async (req, res) => {
 
   const protocol = req.headers['x-forwarded-proto'] || 'https';
   const host = req.headers.host;
-  const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+  // Prefer explicit APP_URL (set this in Vercel to production domain)
+  const configuredBaseUrl = process.env.APP_URL || `${protocol}://${host}`;
+  const expectedProdCallback = 'https://wholesale-shipping-rules.vercel.app/api/auth/callback';
 
   const state = crypto.randomBytes(16).toString('hex');
   const expires = new Date(Date.now() + 10 * 60 * 1000).toUTCString();
   res.setHeader('Set-Cookie', `shopify_oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Secure; Expires=${expires}`);
 
   const scopes = 'read_customers,read_orders,read_shipping,write_shipping,read_products';
-  const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/callback`);
-  const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${process.env.SHOPIFY_API_KEY}` +
+  const redirectUriRaw = `${configuredBaseUrl}/api/auth/callback`;
+  const redirectUri = encodeURIComponent(redirectUriRaw);
+  const clientId = process.env.SHOPIFY_API_KEY;
+  if (!clientId) {
+    console.error('[install] Missing SHOPIFY_API_KEY environment variable');
+    res.statusCode = 500;
+    return res.end('Server not configured: missing client_id');
+  }
+  const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}` +
     `&scope=${encodeURIComponent(scopes)}` +
     `&state=${state}` +
     `&redirect_uri=${redirectUri}`;
+
+  // Debug logging
+  console.log('[install] params', { shop, configuredBaseUrl, redirectUriRaw, scopes, state });
+  console.log('[install] client_id', clientId);
+  console.log('[install] full_oauth_url', installUrl);
+  if (redirectUriRaw !== expectedProdCallback) {
+    console.warn('[install] redirect_uri does not match expected production callback', {
+      redirectUriRaw,
+      expectedProdCallback,
+    });
+  }
 
   res.statusCode = 302;
   res.setHeader('Location', installUrl);

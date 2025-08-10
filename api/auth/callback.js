@@ -7,11 +7,22 @@ function timingSafeEqualStr(a, b) {
   return crypto.timingSafeEqual(ab, bb);
 }
 
-function buildHmacMessageFromQuery(query) {
-  const entries = Object.keys(query)
+// Prefer using the raw querystring to preserve original encoding for HMAC
+function buildHmacMessageFromRequestUrl(reqUrl, fallbackQueryObject) {
+  try {
+    const raw = (reqUrl || '').split('?')[1] || '';
+    const parts = raw
+      .split('&')
+      .filter(Boolean)
+      .filter((kv) => !kv.startsWith('hmac=') && !kv.startsWith('signature='))
+      .sort();
+    if (parts.length > 0) return parts.join('&');
+  } catch (_) {}
+  // Fallback to object reconstruction if raw not available
+  const entries = Object.keys(fallbackQueryObject || {})
     .filter((k) => k !== 'hmac' && k !== 'signature')
     .sort()
-    .map((k) => `${k}=${Array.isArray(query[k]) ? query[k].join(',') : query[k]}`);
+    .map((k) => `${k}=${Array.isArray(fallbackQueryObject[k]) ? fallbackQueryObject[k].join(',') : fallbackQueryObject[k]}`);
   return entries.join('&');
 }
 
@@ -75,8 +86,10 @@ module.exports = async (req, res) => {
   }
 
   const { shop, hmac, code, state } = req.query || {};
+  console.log('[oauth/callback] incoming params:', { shop, hasHmac: Boolean(hmac), hasCode: Boolean(code), state });
   if (!shop || !hmac || !code || !state) {
     res.statusCode = 400;
+    console.error('[oauth/callback] missing params');
     return res.end('Missing required parameters');
   }
 
@@ -90,24 +103,29 @@ module.exports = async (req, res) => {
       return acc;
     }, {});
   const stateCookie = cookies['shopify_oauth_state'];
+  console.log('[oauth/callback] state check:', { stateParam: state, stateCookie });
   if (!stateCookie || !timingSafeEqualStr(stateCookie, state)) {
     res.statusCode = 403;
+    console.error('[oauth/callback] invalid state');
     return res.end('Invalid OAuth state');
   }
 
   // Verify HMAC
-  const message = buildHmacMessageFromQuery(req.query);
+  const message = buildHmacMessageFromRequestUrl(req.url, req.query);
   const computed = crypto
     .createHmac('sha256', process.env.SHOPIFY_API_SECRET)
     .update(message)
     .digest('hex');
+  console.log('[oauth/callback] hmac check:', { computed, provided: hmac, message });
   if (!timingSafeEqualStr(computed, hmac)) {
     res.statusCode = 401;
+    console.error('[oauth/callback] HMAC validation failed');
     return res.end('HMAC validation failed');
   }
 
   try {
     const accessToken = await exchangeCodeForToken(shop, code);
+    console.log('[oauth/callback] token acquired');
 
     // Demo storage (memory). Replace with persistent storage in production.
     if (!globalThis.__SHOP_TOKENS) globalThis.__SHOP_TOKENS = {};
@@ -119,12 +137,13 @@ module.exports = async (req, res) => {
     const callbackUrl = `${baseUrl}/api/shipping-rates?shop=${encodeURIComponent(shop)}`;
 
     await registerCarrierService(shop, accessToken, callbackUrl);
+    console.log('[oauth/callback] carrier service registration attempted for', { callbackUrl });
 
     res.statusCode = 302;
-    res.setHeader('Location', '/public/index.html');
+    res.setHeader('Location', '/');
     return res.end();
   } catch (err) {
-    console.error('OAuth flow error:', err && err.message ? err.message : err);
+    console.error('[oauth/callback] error:', err && err.stack ? err.stack : err);
     res.statusCode = 500;
     return res.end('OAuth error');
   }
