@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wholesale Shipping Rules</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
+      .container { max-width: 720px; margin: 0 auto; }
+      a.button, button { display: inline-block; background: #008060; color: #fff; padding: 0.75rem 1rem; border-radius: 6px; text-decoration: none; border: 0; cursor: pointer; }
+      input { padding: 0.5rem; width: 100%; max-width: 420px; }
+      code { background: #f4f4f5; padding: 0.1rem 0.35rem; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Wholesale Shipping Rules</h1>
+      <p>This app provides custom shipping rates for customers tagged <strong>Wholesaler</strong>. Orders of <strong>$1000+</strong> get <strong>free shipping</strong>. Other customers use your existing Shopify shipping rules.</p>
+      <form method="GET" action="/api/install" style="margin-top:1rem;">
+        <label for="shop">Shop domain</label><br />
+        <input id="shop" name="shop" type="text" placeholder="your-shop.myshopify.com" required />
+        <div style="height: 0.75rem;"></div>
+        <button type="submit" class="button">Install app</button>
+      </form>
+    </div>
+  </body>
+  </html>
+
+
